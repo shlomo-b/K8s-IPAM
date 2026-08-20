@@ -4,10 +4,10 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'K8s-IPAM/**'
+      - 'ipam-k8s-app/**'
   pull_request:
     paths:
-      - 'K8s-IPAM/**'
+      - 'ipam-k8s-app/**'
 
 permissions:
   contents: write
@@ -38,7 +38,7 @@ jobs:
       - name: Hadolint (Dockerfile lint)
         uses: hadolint/hadolint-action@v3.1.0
         with:
-          dockerfile: ./K8s-IPAM/Dockerfile
+          dockerfile: ./ipam-k8s-app/Dockerfile
           failure-threshold: warning
 
       # secret scan using gitleaks
@@ -63,7 +63,7 @@ jobs:
       - name: read file
         id: tag
         run: |
-          echo "contents=$(cat ./K8s-IPAM/image-tag.txt)" >> $GITHUB_OUTPUT
+          echo "contents=$(cat ./ipam-k8s-app/image-tag.txt)" >> $GITHUB_OUTPUT
 
       # print the contents
       - name: PrintFile contents
@@ -73,7 +73,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: . # the context is the root directory
-          file: ./K8s-IPAM/Dockerfile
+          file: ./ipam-k8s-app/Dockerfile
           push: false
           load: true  # ← Required for Trivy to scan local image
           tags: fortigate:${{ steps.tag.outputs.contents }}
@@ -102,7 +102,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: ./K8s-IPAM/Dockerfile
+          file: ./ipam-k8s-app/Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |

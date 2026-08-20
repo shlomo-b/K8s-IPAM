@@ -2,11 +2,19 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# for CI github actions
+COPY ipam-k8s-app/requirements.txt .
+# for local testing
+# COPY requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY app ./app
-COPY static ./static
+# for CI github actions
+COPY ipam-k8s-app/app ./app
+COPY ipam-k8s-app/static ./static
+# for local testing
+# COPY app ./app
+# COPY static ./static
 
 # ------------ NEW (security best practice) -------------
 # Create a non-root user and give it the app files
