@@ -76,14 +76,14 @@ jobs:
           file: ./ipam-k8s-app/Dockerfile
           push: false
           load: true  # ← Required for Trivy to scan local image
-          tags: fortigate:${{ steps.tag.outputs.contents }}
+          tags: k8sipam:${{ steps.tag.outputs.contents }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Scan local image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: 'K8s-IPAM:${{ steps.tag.outputs.contents }}'  # ← Local image tag
+          image-ref: 'k8sipam:${{ steps.tag.outputs.contents }}'  # ← Local image tag
           format: 'table' # format the output
           exit-code: 1  # ← Fail workflow on vulnerabilities
           ignore-unfixed: true # don't fail on vulnerabilities that are not fixed
@@ -91,7 +91,7 @@ jobs:
 
       # print the image with tag
       - name: Print image tag
-        run: echo "${{ secrets.DOCKERHUB_USERNAME }}/K8s-IPAM:${{ steps.tag.outputs.contents }}"
+        run: echo "${{ secrets.DOCKERHUB_USERNAME }}/k8sipam:${{ steps.tag.outputs.contents }}"
 
       - name: output tag image only
         id: tag-only
@@ -106,8 +106,8 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/K8s-IPAM:${{ steps.tag-only.outputs.tag-image }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/K8s-IPAM:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/k8sipam:${{ steps.tag-only.outputs.tag-image }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/k8sipam:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
