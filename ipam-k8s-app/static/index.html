@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kubernetes IPAM</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/kubernetes-icon-color.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div id="login-screen" class="login-screen">
+    <div class="login-art" aria-hidden="true">
+      <img class="login-wheel" src="/static/img/kubernetes-icon-color.svg" alt="" />
+      <div class="login-ring"></div>
+      <div class="login-ring delay"></div>
+    </div>
+    <div class="login-card">
+      <img class="login-wordmark" src="/static/img/kubernetes-horizontal-color.svg" alt="Kubernetes" />
+      <h1>IPAM for Kubernetes</h1>
+      <form id="login-form">
+        <label>
+          Username
+          <input id="username" name="username" autocomplete="username" required />
+        </label>
+        <label>
+          Password
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <p id="login-error" class="error" hidden></p>
+        <button type="submit">Sign in</button>
+      </form>
+    </div>
+  </div>
+
+  <div id="app-screen" class="app-screen" hidden>
+    <header class="user-bar">
+      <span id="welcome-user"></span>
+      <button type="button" id="logout-btn" class="user-logout">Log out</button>
+    </header>
+    <aside class="sidebar">
+      <div class="brand">
+        <img src="/static/img/kubernetes-icon-color.svg" alt="Kubernetes" />
+        <strong>K8s IPAM</strong>
+      </div>
+      <nav>
+        <button class="nav-btn active" data-view="dashboard">Dashboard</button>
+        <button class="nav-btn" data-view="allocations">Allocations</button>
+        <button class="nav-btn" data-view="pools">Pools</button>
+      </nav>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div>
+          <h2 id="page-title">Dashboard</h2>
+          <p id="page-sub">MetalLB-style pool map and saved cluster IPs</p>
+        </div>
+        <div class="topbar-right">
+          <label class="pool-select">
+            Pool
+            <select id="pool-select"></select>
+          </label>
+          <button id="add-btn" class="primary">Add IP</button>
+        </div>
+      </header>
+
+      <section id="view-dashboard" class="view">
+        <div class="stats" id="stats"></div>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>IP map</h3>
+            <div class="legend">
+              <span><i class="dot free"></i> Free</span>
+              <span><i class="dot allocated"></i> Allocated</span>
+              <span><i class="dot reserved"></i> Reserved</span>
+              <span><i class="dot conflict"></i> Conflict</span>
+            </div>
+          </div>
+          <div id="ip-grid" class="ip-grid"></div>
+          <p id="empty-map" class="empty" hidden>No pool yet. Open <strong>Pools</strong> and add a subnet CIDR (for example <code>10.244.0.0/16</code> for pods), then use <strong>Add IP</strong>.</p>
+        </div>
+      </section>
+
+      <section id="view-allocations" class="view" hidden>
+        <div class="filters">
+          <button class="chip active" data-kind="all">All</button>
+          <button class="chip" data-kind="Pod">Pods</button>
+          <button class="chip" data-kind="Service">Services</button>
+          <button class="chip" data-kind="Ingress">Ingress</button>
+          <button class="chip" data-kind="Node">Nodes</button>
+          <button class="chip" data-kind="Reserved">Reserved</button>
+          <input id="search" placeholder="Search name, namespace, IP…" />
+        </div>
+        <div class="panel table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>IP</th>
+                <th>Kind</th>
+                <th>Namespace</th>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Notes</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="alloc-body"></tbody>
+          </table>
+          <p id="empty-alloc" class="empty" hidden>No IPs in this pool yet. Click <strong>Add IP</strong> to save one here.</p>
+        </div>
+      </section>
+
+      <section id="view-pools" class="view" hidden>
+        <div class="panel">
+          <div class="panel-head">
+            <h3>Address pools and ranges</h3>
+            <div class="row-actions">
+              <button id="add-pool-btn" class="ghost">Add pool</button>
+              <button id="add-range-btn" class="primary">Add range</button>
+            </div>
+          </div>
+          <p class="field-hint">A pool is a subnet CIDR. A range is a start–end block (MetalLB, nodes, VIP) and is optional.</p>
+          <div id="pool-list" class="pool-list"></div>
+          <p id="empty-pools" class="empty" hidden>Nothing here yet. Click <strong>Add pool</strong> for a CIDR, or <strong>Add range</strong> for start and end IPs.</p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="alloc-dialog">
+    <form id="alloc-form" method="dialog">
+      <h3 id="alloc-dialog-title">Add IP</h3>
+      <input type="hidden" id="alloc-id" />
+      <label>Kind
+        <select id="alloc-kind" required>
+          <option>Pod</option>
+          <option>Service</option>
+          <option>Ingress</option>
+          <option>Node</option>
+          <option>Reserved</option>
+        </select>
+      </label>
+      <p class="field-hint">Kind is what this IP belongs to. Use Node for a k3s node. Use Reserved for a VIP or address you never want assigned.</p>
+      <label>Namespace
+        <input id="alloc-ns" required placeholder="default" />
+      </label>
+      <label>Name
+        <input id="alloc-name" required placeholder="frontend" />
+      </label>
+      <label>Pool
+        <select id="alloc-pool" required></select>
+      </label>
+      <label>IP address
+        <input id="alloc-ip" required placeholder="10.0.0.80" />
+      </label>
+      <label>Status
+        <select id="alloc-status">
+          <option value="allocated">allocated — in use</option>
+          <option value="reserved">reserved — locked, do not reuse</option>
+        </select>
+      </label>
+      <p class="field-hint">Allocated = this object is using the IP. Reserved = keep the IP blocked (gateway, VIP, unused on purpose).</p>
+      <label>Notes
+        <input id="alloc-notes" placeholder="optional" />
+      </label>
+      <p id="alloc-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" id="alloc-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="pool-dialog">
+    <form id="pool-form" method="dialog">
+      <h3 id="pool-dialog-title">Add pool</h3>
+      <input type="hidden" id="pool-id" />
+      <input type="hidden" id="pool-mode" value="cidr" />
+      <label>Name
+        <input id="pool-name" required placeholder="k3s-pods" />
+      </label>
+      <div>
+        <span class="field-label">Type</span>
+        <div class="mode-chips" role="group" aria-label="Pool type">
+          <button type="button" class="chip active" id="mode-cidr" data-mode="cidr">Pool (CIDR)</button>
+          <button type="button" class="chip" id="mode-range" data-mode="range">IP range</button>
+        </div>
+        <p class="field-hint" id="pool-mode-hint">Whole subnet, for example pods <code>10.244.0.0/16</code> or nodes <code>10.0.0.0/24</code>.</p>
+      </div>
+      <label id="pool-cidr-wrap">Subnet (CIDR)
+        <input id="pool-cidr" placeholder="10.244.0.0/16" />
+      </label>
+      <div id="pool-range-wrap" class="range-fields" hidden>
+        <label>Start IP
+          <input id="pool-start" placeholder="10.0.0.100" />
+        </label>
+        <label>End IP
+          <input id="pool-end" placeholder="10.0.0.150" />
+        </label>
+      </div>
+      <label>Purpose
+        <input id="pool-purpose" placeholder="all pods" />
+      </label>
+      <p id="pool-error" class="error" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="ghost" id="pool-cancel">Cancel</button>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden role="status"></div>
+
+  <dialog id="idle-dialog" class="idle-dialog">
+    <h3>Session timeout</h3>
+    <p>You will be logged out in 30 seconds due to inactivity.</p>
+    <div class="dialog-actions">
+      <button type="button" class="primary" id="idle-stay">Stay signed in</button>
+    </div>
+  </dialog>
+
+  <footer class="app-footer">© 2026 K8s IPAM. All rights reserved by Shlomo Barzilai.</footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
