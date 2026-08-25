@@ -17,7 +17,6 @@ from pymongo import MongoClient
 from starlette.middleware.sessions import SessionMiddleware
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_FILE = ROOT / "data" / "ipam.json"
 STATIC = ROOT / "static"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(message)s")
@@ -31,20 +30,51 @@ def require_env(name: str) -> str:
     return value
 
 
+def env_flag(name: str, default: str = "false") -> bool:
+    return os.environ.get(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 IPAM_USER = require_env("IPAM_USER")
 IPAM_PASSWORD = require_env("IPAM_PASSWORD")
+USE_MONGODB = env_flag("USE_MONGODB", "true")
+MONGO_URI = os.environ.get("MONGO_URI", "").strip()
 MONGO_HOST = os.environ.get("MONGO_HOST", "mongo")
 MONGO_DB_NAME = os.environ.get("MONGO_DB", "ipam")
-MONGO_USER = require_env("MONGO_INITDB_ROOT_USERNAME")
-MONGO_PASSWORD = require_env("MONGO_INITDB_ROOT_PASSWORD")
+MONGO_USER = os.environ.get("MONGO_INITDB_ROOT_USERNAME", "")
+MONGO_PASSWORD = os.environ.get("MONGO_INITDB_ROOT_PASSWORD", "")
+DATA_DIR = ROOT / "data"
+DATA_FILE = DATA_DIR / "ipam.json"
+SESSION_FILE = DATA_DIR / ".session_secret"
+
+if USE_MONGODB:
+    MONGO_USER = require_env("MONGO_INITDB_ROOT_USERNAME")
+    MONGO_PASSWORD = require_env("MONGO_INITDB_ROOT_PASSWORD")
 
 _mongo: MongoClient | None = None
 
 
+def using_atlas() -> bool:
+    host = MONGO_HOST.lower()
+    uri = MONGO_URI.lower()
+    return (
+        "mongodb+srv://" in uri
+        or "mongodb.net" in uri
+        or "mongodb.net" in host
+        or host.startswith("mongodb+srv://")
+    )
+
+
 def mongo_uri() -> str:
+    if MONGO_URI:
+        return MONGO_URI
     user = quote_plus(MONGO_USER)
     password = quote_plus(MONGO_PASSWORD)
-    return f"mongodb://{user}:{password}@{MONGO_HOST}:27017/{MONGO_DB_NAME}?authSource=admin"
+    host = MONGO_HOST.strip()
+    if host.startswith("mongodb+srv://") or host.startswith("mongodb://"):
+        return host
+    if using_atlas():
+        return f"mongodb+srv://{user}:{password}@{host}/{MONGO_DB_NAME}"
+    return f"mongodb://{user}:{password}@{host}:27017/{MONGO_DB_NAME}?authSource=admin"
 
 
 def mongo() -> MongoClient:
@@ -66,8 +96,45 @@ def without_mongo_id(doc: dict[str, Any] | None) -> dict[str, Any] | None:
     return clean
 
 
+def empty_db() -> dict[str, Any]:
+    return {"pools": [], "allocations": []}
+
+
+def load_file_db() -> dict[str, Any]:
+    if not DATA_FILE.exists():
+        return empty_db()
+    payload = json.loads(DATA_FILE.read_text())
+    return {
+        "pools": payload.get("pools") or [],
+        "allocations": payload.get("allocations") or [],
+    }
+
+
+def save_file_db(db: dict[str, Any]) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "pools": [dict(item) for item in db.get("pools", [])],
+        "allocations": [dict(item) for item in db.get("allocations", [])],
+    }
+    tmp = DATA_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=2))
+    tmp.replace(DATA_FILE)
+
+
+def load_or_create_file_secret() -> str:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if SESSION_FILE.exists() and SESSION_FILE.read_text().strip():
+        return SESSION_FILE.read_text().strip()
+    value = secrets.token_hex(32)
+    SESSION_FILE.write_text(value)
+    return value
+
+
 def wait_for_mongo(tries: int = 30) -> None:
-    log.info("Connecting to MongoDB at %s database=%s user=%s", MONGO_HOST, MONGO_DB_NAME, MONGO_USER)
+    if using_atlas():
+        log.info("Connecting to MongoDB Atlas")
+    else:
+        log.info("Connecting to MongoDB")
     last_error: Exception | None = None
     for attempt in range(1, tries + 1):
         try:
@@ -89,7 +156,6 @@ def migrate_json_if_empty() -> None:
         log.info("MongoDB already has data: pools=%s allocations=%s", pools_count, alloc_count)
         return
     if not DATA_FILE.exists():
-        log.info("MongoDB is empty and no JSON seed file was found")
         return
     payload = json.loads(DATA_FILE.read_text())
     pools = payload.get("pools") or []
@@ -111,10 +177,29 @@ def load_or_create_session_secret() -> str:
     return value
 
 
-wait_for_mongo()
-migrate_json_if_empty()
-SESSION_SECRET = load_or_create_session_secret()
-log.info("Connected to MongoDB host=%s db=%s", MONGO_HOST, MONGO_DB_NAME)
+def store_ui_login() -> None:
+    mongo_db().users.update_one(
+        {"_id": "ui"},
+        {"$set": {"username": IPAM_USER, "password": IPAM_PASSWORD}},
+        upsert=True,
+    )
+
+
+if USE_MONGODB:
+    wait_for_mongo()
+    migrate_json_if_empty()
+    SESSION_SECRET = load_or_create_session_secret()
+    store_ui_login()
+    if using_atlas():
+        log.info("Connected to MongoDB Atlas successfully")
+    else:
+        log.info("Connected to MongoDB successfully")
+else:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if not DATA_FILE.exists():
+        save_file_db(empty_db())
+    SESSION_SECRET = load_or_create_file_secret()
+    log.info("MongoDB disabled. Using file store %s", DATA_FILE)
 
 KINDS = ("Pod", "Service", "Ingress", "Node", "Reserved")
 STATUSES = ("allocated", "reserved", "free")
@@ -125,6 +210,8 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
 
 def load_db() -> dict[str, Any]:
+    if not USE_MONGODB:
+        return load_file_db()
     database = mongo_db()
     return {
         "pools": [without_mongo_id(doc) for doc in database.pools.find()],
@@ -133,6 +220,9 @@ def load_db() -> dict[str, Any]:
 
 
 def save_db(db: dict[str, Any]) -> None:
+    if not USE_MONGODB:
+        save_file_db(db)
+        return
     database = mongo_db()
     pools = [dict(item) for item in db.get("pools", [])]
     allocations = [dict(item) for item in db.get("allocations", [])]

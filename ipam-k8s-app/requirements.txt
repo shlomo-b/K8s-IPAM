@@ -3,3 +3,4 @@ uvicorn[standard]==0.34.2
 python-multipart==0.0.20
 itsdangerous==2.2.0
 pymongo==4.10.1
+dnspython==2.7.0
