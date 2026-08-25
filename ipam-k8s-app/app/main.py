@@ -10,7 +10,7 @@ from typing import Any
 from urllib.parse import quote_plus
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -364,6 +364,11 @@ class AllocationBody(BaseModel):
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
+
+
+@app.get("/metrics")
+def metrics() -> PlainTextResponse:
+    return PlainTextResponse("ipam_up 1\n", media_type="text/plain; version=0.0.4")
 
 
 @app.post("/api/login")
