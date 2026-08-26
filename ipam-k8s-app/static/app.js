@@ -201,7 +201,7 @@ function showView(name) {
   });
   const titles = {
     dashboard: ["Dashboard", "Pool utilization and IP map"],
-    allocations: ["Allocations", "Pods, Services, Ingresses, Nodes — edit these by hand"],
+    allocations: ["Allocations", "Pods, Services, Ingresses, Nodes, Masters — edit these by hand"],
     pools: ["Pools", "CIDR pools and optional IP ranges"],
   };
   $("page-title").textContent = titles[name][0];

@@ -46,6 +46,17 @@ DATA_DIR = ROOT / "data"
 DATA_FILE = DATA_DIR / "ipam.json"
 SESSION_FILE = DATA_DIR / ".session_secret"
 
+KINDS = ("Pod", "Service", "Ingress", "Node", "Master", "Reserved")
+KIND_COLLECTIONS = {
+    "Pod": "pods",
+    "Service": "services",
+    "Ingress": "ingress",
+    "Node": "nodes",
+    "Master": "masters",
+    "Reserved": "reserved",
+}
+STATUSES = ("allocated", "reserved", "free")
+
 if USE_MONGODB:
     MONGO_USER = require_env("MONGO_INITDB_ROOT_USERNAME")
     MONGO_PASSWORD = require_env("MONGO_INITDB_ROOT_PASSWORD")
@@ -148,23 +159,91 @@ def wait_for_mongo(tries: int = 30) -> None:
     raise RuntimeError(f"MongoDB is not reachable: {last_error}") from last_error
 
 
-def migrate_json_if_empty() -> None:
+def ensure_kind_collections() -> None:
     database = mongo_db()
-    pools_count = database.pools.count_documents({})
-    alloc_count = database.allocations.count_documents({})
-    if pools_count or alloc_count:
-        log.info("MongoDB already has data: pools=%s allocations=%s", pools_count, alloc_count)
+    existing = set(database.list_collection_names())
+    for name in KIND_COLLECTIONS.values():
+        if name not in existing:
+            database.create_collection(name)
+
+
+def mongo_has_ipam_data() -> bool:
+    database = mongo_db()
+    names = set(database.list_collection_names())
+    if "pools" in names and database.pools.count_documents({}):
+        return True
+    if "allocations" in names and database.allocations.count_documents({}):
+        return True
+    return any(
+        name in names and database[name].count_documents({})
+        for name in KIND_COLLECTIONS.values()
+    )
+
+
+def insert_allocations_by_kind(allocations: list[dict[str, Any]]) -> int:
+    database = mongo_db()
+    grouped: dict[str, list[dict[str, Any]]] = {name: [] for name in KIND_COLLECTIONS.values()}
+    count = 0
+    for item in allocations:
+        payload = dict(item)
+        payload.pop("_id", None)
+        name = KIND_COLLECTIONS.get(str(payload.get("kind") or ""))
+        if not name:
+            continue
+        grouped[name].append(payload)
+        count += 1
+    for name, docs in grouped.items():
+        if docs:
+            database[name].insert_many(docs)
+    return count
+
+
+def load_allocation_docs() -> list[dict[str, Any]]:
+    database = mongo_db()
+    names = set(database.list_collection_names())
+    rows: list[dict[str, Any]] = []
+    for name in KIND_COLLECTIONS.values():
+        if name not in names:
+            continue
+        rows.extend(without_mongo_id(doc) for doc in database[name].find())
+    if "allocations" in names:
+        rows.extend(without_mongo_id(doc) for doc in database.allocations.find())
+    return [row for row in rows if row]
+
+
+def migrate_json_if_empty() -> None:
+    if mongo_has_ipam_data():
         return
     if not DATA_FILE.exists():
         return
     payload = json.loads(DATA_FILE.read_text())
     pools = payload.get("pools") or []
     allocations = payload.get("allocations") or []
+    database = mongo_db()
     if pools:
         database.pools.insert_many(pools)
-    if allocations:
-        database.allocations.insert_many(allocations)
-    log.info("Imported JSON seed into MongoDB: pools=%s allocations=%s", len(pools), len(allocations))
+    inserted = insert_allocations_by_kind(allocations)
+    log.info("Imported JSON seed into MongoDB: pools=%s allocations=%s", len(pools), inserted)
+
+
+def migrate_allocations_to_kind_collections() -> None:
+    database = mongo_db()
+    names = set(database.list_collection_names())
+    if "allocations" not in names:
+        return
+    moved = 0
+    for doc in database.allocations.find():
+        name = KIND_COLLECTIONS.get(str(doc.get("kind") or ""))
+        if not name:
+            continue
+        database[name].replace_one({"_id": doc["_id"]}, doc, upsert=True)
+        database.allocations.delete_one({"_id": doc["_id"]})
+        moved += 1
+    leftover = database.allocations.count_documents({})
+    if leftover == 0:
+        database.drop_collection("allocations")
+    if moved:
+        log.info("Moved %s documents from allocations into kind collections", moved)
 
 
 def load_or_create_session_secret() -> str:
@@ -187,7 +266,9 @@ def store_ui_login() -> None:
 
 if USE_MONGODB:
     wait_for_mongo()
+    ensure_kind_collections()
     migrate_json_if_empty()
+    migrate_allocations_to_kind_collections()
     SESSION_SECRET = load_or_create_session_secret()
     store_ui_login()
     if using_atlas():
@@ -201,9 +282,6 @@ else:
     SESSION_SECRET = load_or_create_file_secret()
     log.info("MongoDB disabled. Using file store %s", DATA_FILE)
 
-KINDS = ("Pod", "Service", "Ingress", "Node", "Reserved")
-STATUSES = ("allocated", "reserved", "free")
-
 app = FastAPI(title="Kubernetes IPAM")
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
@@ -215,7 +293,7 @@ def load_db() -> dict[str, Any]:
     database = mongo_db()
     return {
         "pools": [without_mongo_id(doc) for doc in database.pools.find()],
-        "allocations": [without_mongo_id(doc) for doc in database.allocations.find()],
+        "allocations": load_allocation_docs(),
     }
 
 
@@ -228,14 +306,23 @@ def save_db(db: dict[str, Any]) -> None:
     allocations = [dict(item) for item in db.get("allocations", [])]
     for item in pools:
         item.pop("_id", None)
-    for item in allocations:
-        item.pop("_id", None)
     database.pools.delete_many({})
-    database.allocations.delete_many({})
     if pools:
         database.pools.insert_many([dict(item) for item in pools])
-    if allocations:
-        database.allocations.insert_many([dict(item) for item in allocations])
+    grouped: dict[str, list[dict[str, Any]]] = {name: [] for name in KIND_COLLECTIONS.values()}
+    for item in allocations:
+        payload = dict(item)
+        payload.pop("_id", None)
+        name = KIND_COLLECTIONS.get(str(payload.get("kind") or ""))
+        if name:
+            grouped[name].append(payload)
+    ensure_kind_collections()
+    for name, docs in grouped.items():
+        database[name].delete_many({})
+        if docs:
+            database[name].insert_many(docs)
+    if "allocations" in database.list_collection_names():
+        database.drop_collection("allocations")
 
 
 def require_login(request: Request) -> None:
