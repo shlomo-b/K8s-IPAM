@@ -380,6 +380,7 @@ td.ip { font-family: var(--mono); }
 .badge.Service { background: rgba(50, 108, 229, 0.25); }
 .badge.Ingress { background: #3a2a55; }
 .badge.Node { background: #3a3320; }
+.badge.Master { background: #3a2418; }
 .badge.Reserved { background: #2d3340; }
 .badge.allocated { color: var(--k8s-2); }
 .badge.reserved { color: var(--muted); }

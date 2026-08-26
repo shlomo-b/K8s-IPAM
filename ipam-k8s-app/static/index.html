@@ -91,6 +91,7 @@
           <button class="chip" data-kind="Service">Services</button>
           <button class="chip" data-kind="Ingress">Ingress</button>
           <button class="chip" data-kind="Node">Nodes</button>
+          <button class="chip" data-kind="Master">Masters</button>
           <button class="chip" data-kind="Reserved">Reserved</button>
           <input id="search" placeholder="Search name, namespace, IP…" />
         </div>
@@ -140,10 +141,11 @@
           <option>Service</option>
           <option>Ingress</option>
           <option>Node</option>
+          <option>Master</option>
           <option>Reserved</option>
         </select>
       </label>
-      <p class="field-hint">Kind is what this IP belongs to. Use Node for a k3s node. Use Reserved for a VIP or address you never want assigned.</p>
+      <p class="field-hint">Kind is what this IP belongs to. Use Node for a worker, Master for a control-plane node. Use Reserved for a VIP or address you never want assigned.</p>
       <label>Namespace
         <input id="alloc-ns" required placeholder="default" />
       </label>
