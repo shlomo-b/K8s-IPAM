@@ -219,3 +219,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 docker-compose.yml
+.githooks/
+.pre-commit-config.yaml
+PRE-PUSH.md
