@@ -2,7 +2,7 @@
 
 Manual IP address inventory for Kubernetes clusters.
 
-Record which address belongs to a Pod, Service, Ingress, Node, or reserved VIP. The dashboard shows pool utilization and a clickable IP map so the same address is not assigned twice.
+Record which address belongs to a Pod, Service, Ingress, Node, Master, or reserved VIP. The dashboard shows pool utilization and a clickable IP map so the same address is not assigned twice.
 
 This application does **not** connect to the Kubernetes API. Allocations are entered and maintained by operators.
 
@@ -15,7 +15,7 @@ This application does **not** connect to the Kubernetes API. Allocations are ent
 - Idle timeout (3 minutes, 30-second warning)
 - CIDR pools (example: `10.0.0.0/24`, `10.244.0.0/16`)
 - Start–end ranges (example: `10.0.0.100`–`10.0.0.150`)
-- Allocations: kind, namespace, name, IP, status, notes
+- Allocations: kind (Pod, Service, Ingress, Node, Master, Reserved), namespace, name, IP, status, notes
 - Dashboard: used, free, reserved, and IP map
 - Duplicate-IP check within a pool
 - IP must belong to the selected pool or range
@@ -126,7 +126,8 @@ Each pool or range appears in the Pool selector. The dashboard and allocation li
 | Pod | Pod address |
 | Service | ClusterIP or LoadBalancer address |
 | Ingress | Ingress / controller VIP |
-| Node | Cluster node |
+| Node | Worker node |
+| Master | Control-plane node |
 | Reserved | Address that must not be reused |
 
 ### Status
@@ -137,7 +138,7 @@ Each pool or range appears in the Pool selector. The dashboard and allocation li
 | reserved | Held on purpose (gateway, API VIP) |
 | free | No record (shown on the map) |
 
-Example: node `node-1` at `10.0.0.10` is **allocated**. API VIP `10.0.0.5` is **reserved**.
+Example: worker `node-1` at `10.0.0.20` is **Node / allocated**. Control-plane `master-1` at `10.0.0.10` is **Master / allocated**. API VIP `10.0.0.5` is **Reserved / reserved**.
 
 ### Conflict
 
@@ -153,7 +154,7 @@ An address is marked conflict if more than one non-free record exists for it in 
 
 **Dashboard** — utilization and IP map. Click a cell to add or edit that address.
 
-**Allocations** — table for the selected pool. Filter by kind or search name, namespace, or IP.
+**Allocations** — table for the selected pool. Filter by kind (All, Pods, Services, Ingress, Nodes, **Masters**, Reserved) or search name, namespace, or IP. Use **Master** for a control-plane node and **Node** for a worker.
 
 **Pools** — **Add pool** (CIDR) or **Add range** (start–end). Deleting a pool deletes its allocations.
 
@@ -168,7 +169,8 @@ Documentation examples only. Use addresses that match your cluster.
 | pods | pool | `10.244.0.0/16` | Pod network |
 | nodes-net | pool | `10.0.0.0/24` | Node / load-balancer network |
 | lb-pool | range | `10.0.0.100`–`10.0.0.150` | Load balancer |
-| nodes | range | `10.0.0.10`–`10.0.0.20` | Nodes |
+| nodes | range | `10.0.0.20`–`10.0.0.30` | Worker nodes |
+| masters | range | `10.0.0.10`–`10.0.0.12` | Control-plane nodes |
 
 Reserved examples on `10.0.0.0/24`:
 
@@ -190,7 +192,7 @@ Database: `ipam` (or `MONGO_DB`).
 | Collection | Contents |
 |------------|----------|
 | `pools` | CIDR pools and ranges |
-| `allocations` | IP records |
+| `pods` / `services` / `ingress` / `nodes` / `masters` / `reserved` | IP records by kind |
 | `settings` | Session secret (`_id: session`) |
 
 Connection: `mongodb://<user>:<password>@mongo:27017/ipam?authSource=admin`
@@ -293,7 +295,7 @@ Create allocation:
 }
 ```
 
-`kind`: `Pod`, `Service`, `Ingress`, `Node`, `Reserved`  
+`kind`: `Pod`, `Service`, `Ingress`, `Node`, `Master`, `Reserved`  
 `status`: `allocated`, `reserved`, `free`
 
 | Code | Meaning |
