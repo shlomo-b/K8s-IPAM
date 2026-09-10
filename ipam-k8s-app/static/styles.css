@@ -202,6 +202,23 @@ input:focus, select:focus {
   text-decoration: underline;
 }
 
+.mongo-status {
+  position: fixed;
+  top: 48px;
+  right: 22px;
+  z-index: 30;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1.1rem;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  padding: 4px 0;
+}
+
+.mongo-status.down {
+  color: #ef5a67;
+}
+
 .sidebar {
   background: var(--bg-2);
   border-right: 1px solid var(--line);

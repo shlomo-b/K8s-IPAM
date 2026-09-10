@@ -99,6 +99,17 @@ def mongo_db():
     return mongo()[MONGO_DB_NAME]
 
 
+def mongo_status() -> dict[str, Any]:
+    if not USE_MONGODB:
+        return {"name": "mongodb", "connected": False}
+    name = "mongodb-atlas" if using_atlas() else "mongodb"
+    try:
+        mongo().admin.command("ping")
+        return {"name": name, "connected": True}
+    except Exception:
+        return {"name": name, "connected": False}
+
+
 def without_mongo_id(doc: dict[str, Any] | None) -> dict[str, Any] | None:
     if not doc:
         return doc
@@ -475,15 +486,16 @@ def logout(request: Request) -> dict[str, bool]:
 @app.get("/api/me")
 def me(request: Request) -> JSONResponse:
     user = request.session.get("user")
+    status = mongo_status()
     if not user:
-        return JSONResponse({"user": None}, status_code=401)
-    return JSONResponse({"user": user})
+        return JSONResponse({"user": None, "mongodb": status}, status_code=401)
+    return JSONResponse({"user": user, "mongodb": status})
 
 
 @app.get("/api/pools")
 def list_pools(request: Request) -> dict[str, Any]:
     require_login(request)
-    return {"pools": load_db().get("pools", [])}
+    return {"pools": load_db().get("pools", []), "mongodb": mongo_status()}
 
 
 @app.post("/api/pools")

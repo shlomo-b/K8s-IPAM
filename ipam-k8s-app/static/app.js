@@ -29,6 +29,16 @@ async function api(path, options = {}) {
   return data;
 }
 
+function renderMongoStatus(mongo) {
+  const el = $("mongo-status");
+  if (!el) return;
+  const info = mongo || {};
+  const name = info.name || "mongodb-atlas";
+  const connected = Boolean(info.connected);
+  el.textContent = `${name}: ${connected ? "Connected" : "Disconnected"}`;
+  el.classList.toggle("down", !connected);
+}
+
 function lastOctet(ip) {
   return ip.split(".").pop();
 }
@@ -70,6 +80,7 @@ async function refresh() {
   state.pools = pools.pools;
   state.allocations = allocations.allocations;
   state.map = map;
+  renderMongoStatus(pools.mongodb);
   fillPoolSelects();
   renderStats();
   renderGrid();
@@ -318,6 +329,13 @@ async function leaveApp() {
 function showUser(name) {
   state.user = name || "";
   $("welcome-user").textContent = state.user ? `Welcome, ${state.user}` : "";
+  if (!state.user) {
+    const el = $("mongo-status");
+    if (el) {
+      el.textContent = "mongodb-atlas: Disconnected";
+      el.classList.add("down");
+    }
+  }
 }
 
 async function enterApp(user) {
