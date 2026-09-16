@@ -2,7 +2,7 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# for CI github actions
+# for CI github actionss
 COPY ipam-k8s-app/requirements.txt .
 
 # for local testing
