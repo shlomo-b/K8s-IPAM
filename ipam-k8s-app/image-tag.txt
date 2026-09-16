@@ -1,1 +1,1 @@
-k8sipam-v2.2.1
+k8sipam-v2.2.2

@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import secrets
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -46,13 +47,14 @@ DATA_DIR = ROOT / "data"
 DATA_FILE = DATA_DIR / "ipam.json"
 SESSION_FILE = DATA_DIR / ".session_secret"
 
-KINDS = ("Pod", "Service", "Ingress", "Node", "Master", "Reserved")
+KINDS = ("Pod", "Service", "Ingress", "Node", "Master", "APIServer", "Reserved")
 KIND_COLLECTIONS = {
     "Pod": "pods",
     "Service": "services",
     "Ingress": "ingress",
     "Node": "nodes",
     "Master": "masters",
+    "APIServer": "apiserver_endpoints",
     "Reserved": "reserved",
 }
 STATUSES = ("allocated", "reserved", "free")
@@ -62,6 +64,9 @@ if USE_MONGODB:
     MONGO_PASSWORD = require_env("MONGO_INITDB_ROOT_PASSWORD")
 
 _mongo: MongoClient | None = None
+_db_lock = threading.Lock()
+_db_cache: dict[str, Any] = {"at": 0.0, "data": None}
+_status_cache: dict[str, Any] = {"at": 0.0, "data": None}
 
 
 def using_atlas() -> bool:
@@ -100,14 +105,22 @@ def mongo_db():
 
 
 def mongo_status() -> dict[str, Any]:
+    now = time.monotonic()
+    cached = _status_cache["data"]
+    if cached is not None and now - _status_cache["at"] < 10:
+        return cached
     if not USE_MONGODB:
-        return {"name": "mongodb", "connected": False}
-    name = "mongodb-atlas" if using_atlas() else "mongodb"
-    try:
-        mongo().admin.command("ping")
-        return {"name": name, "connected": True}
-    except Exception:
-        return {"name": name, "connected": False}
+        status = {"name": "mongodb", "connected": False}
+    else:
+        name = "mongodb-atlas" if using_atlas() else "mongodb"
+        try:
+            mongo().admin.command("ping")
+            status = {"name": name, "connected": True}
+        except Exception:
+            status = {"name": name, "connected": False}
+    _status_cache["at"] = now
+    _status_cache["data"] = status
+    return status
 
 
 def without_mongo_id(doc: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -301,11 +314,20 @@ app.mount("/static", StaticFiles(directory=STATIC), name="static")
 def load_db() -> dict[str, Any]:
     if not USE_MONGODB:
         return load_file_db()
-    database = mongo_db()
-    return {
-        "pools": [without_mongo_id(doc) for doc in database.pools.find()],
-        "allocations": load_allocation_docs(),
-    }
+    with _db_lock:
+        cached = _db_cache["data"]
+        if cached is not None:
+            return cached
+        started = time.monotonic()
+        database = mongo_db()
+        data = {
+            "pools": [without_mongo_id(doc) for doc in database.pools.find()],
+            "allocations": load_allocation_docs(),
+        }
+        _db_cache["at"] = time.monotonic()
+        _db_cache["data"] = data
+        log.info("MongoDB load_db %.0fms pools=%s allocations=%s", (time.monotonic() - started) * 1000, len(data["pools"]), len(data["allocations"]))
+        return data
 
 
 def save_db(db: dict[str, Any]) -> None:
@@ -334,6 +356,12 @@ def save_db(db: dict[str, Any]) -> None:
             database[name].insert_many(docs)
     if "allocations" in database.list_collection_names():
         database.drop_collection("allocations")
+    with _db_lock:
+        _db_cache["data"] = {
+            "pools": [dict(item) for item in db.get("pools", [])],
+            "allocations": [dict(item) for item in db.get("allocations", [])],
+        }
+        _db_cache["at"] = time.monotonic()
 
 
 def require_login(request: Request) -> None:
