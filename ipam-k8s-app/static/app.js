@@ -9,6 +9,8 @@ const state = {
   user: "",
 };
 
+const MAP_LIMIT = 512;
+
 const $ = (id) => document.getElementById(id);
 
 async function api(path, options = {}) {
@@ -69,23 +71,92 @@ function setPoolMode(mode) {
       : "Whole subnet, for example pods <code>10.244.0.0/16</code> or nodes <code>10.0.0.0/24</code>.";
 }
 
-async function refresh() {
+function ipv4ToInt(ip) {
+  return ip.split(".").reduce((n, oct) => (n << 8) + Number(oct), 0) >>> 0;
+}
+
+function intToIpv4(n) {
+  return [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join(".");
+}
+
+function poolBounds(pool) {
+  if (!pool) return null;
+  if (pool.cidr && String(pool.cidr).includes("/")) {
+    const [base, prefixStr] = String(pool.cidr).split("/");
+    const prefix = Number(prefixStr);
+    if (!(prefix >= 0 && prefix <= 32)) return null;
+    const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+    const start = ipv4ToInt(base) & mask;
+    const end = start + 2 ** (32 - prefix) - 1;
+    return { start, end, total: end - start + 1 };
+  }
+  if (pool.start && pool.end) {
+    const start = ipv4ToInt(pool.start);
+    const end = ipv4ToInt(pool.end);
+    return { start, end, total: end - start + 1 };
+  }
+  return null;
+}
+
+function poolSize(pool) {
+  return poolBounds(pool)?.total || 0;
+}
+
+function poolIps(pool) {
+  const bounds = poolBounds(pool);
+  if (!bounds || bounds.total > MAP_LIMIT) return [];
+  const ips = [];
+  for (let n = bounds.start; n <= bounds.end; n++) ips.push(intToIpv4(n));
+  return ips;
+}
+
+function applyPoolView() {
   const poolId = state.selectedPool || $("pool-select").value;
-  const poolQuery = poolId ? `?pool=${encodeURIComponent(poolId)}` : "";
-  const [pools, allocations, map] = await Promise.all([
-    api("/api/pools"),
-    api("/api/allocations" + poolQuery),
-    api("/api/ip-map" + poolQuery),
-  ]);
-  state.pools = pools.pools;
-  state.allocations = allocations.allocations;
-  state.map = map;
-  renderMongoStatus(pools.mongodb);
-  fillPoolSelects();
+  const pool = state.pools.find((p) => p.id === poolId) || state.pools[0] || null;
+  if (pool) {
+    state.selectedPool = pool.id;
+    if ($("pool-select").value !== pool.id) $("pool-select").value = pool.id;
+  }
+  const inPool = pool ? state.allocations.filter((a) => a.pool === pool.id) : [];
+  const reserved = inPool.filter((a) => a.status === "reserved").length;
+  const used = inPool.filter((a) => a.status !== "free").length;
+  const total = poolSize(pool);
+  const byIp = {};
+  for (const row of inPool) {
+    (byIp[row.ip] ||= []).push(row);
+  }
+  const addresses = poolIps(pool).map((ip) => {
+    const items = byIp[ip] || [];
+    let cellState = "free";
+    if (items.length > 1) cellState = "conflict";
+    else if (items.length) cellState = items[0].status || "allocated";
+    return { ip, state: cellState, items };
+  });
+  state.map = {
+    pool,
+    total,
+    used,
+    reserved,
+    free: Math.max(total - used, 0),
+    addresses,
+    map_limited: total > MAP_LIMIT,
+  };
   renderStats();
   renderGrid();
   renderTable();
   renderPools();
+}
+
+async function refresh() {
+  const [pools, allocations] = await Promise.all([
+    api("/api/pools"),
+    api("/api/allocations"),
+  ]);
+  state.pools = pools.pools;
+  state.allocations = allocations.allocations;
+  renderMongoStatus(pools.mongodb);
+  fillPoolSelects();
+  applyPoolView();
 }
 
 function fillPoolSelects() {
@@ -212,7 +283,7 @@ function showView(name) {
   });
   const titles = {
     dashboard: ["Dashboard", "Pool utilization and IP map"],
-    allocations: ["Allocations", "Pods, Services, Ingresses, Nodes, Masters — edit these by hand"],
+    allocations: ["Allocations", "Pods, Services, Ingresses, Nodes, Masters, APIServer — edit these by hand"],
     pools: ["Pools", "CIDR pools and optional IP ranges"],
   };
   $("page-title").textContent = titles[name][0];
@@ -444,7 +515,7 @@ document.querySelectorAll(".nav-btn").forEach((btn) => {
 
 $("pool-select").addEventListener("change", () => {
   state.selectedPool = $("pool-select").value;
-  refresh();
+  applyPoolView();
 });
 $("add-btn").addEventListener("click", () => openAlloc());
 $("add-pool-btn").addEventListener("click", () => openPool(null, "cidr"));
