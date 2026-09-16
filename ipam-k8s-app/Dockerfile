@@ -8,7 +8,11 @@ COPY ipam-k8s-app/requirements.txt .
 # for local testing
 # COPY requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# hadolint ignore=DL3005
+RUN apt-get update -y \
+    && apt-get upgrade -y \
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install --no-cache-dir -r requirements.txt
 
 # for CI github actions
 COPY ipam-k8s-app/app ./app
