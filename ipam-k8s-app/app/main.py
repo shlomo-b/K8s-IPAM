@@ -502,7 +502,7 @@ def login(body: LoginBody, request: Request) -> dict[str, str]:
     if body.username != IPAM_USER or body.password != IPAM_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     request.session["user"] = body.username
-    return {"user": body.username}
+    return {"user": body.username, "mongodb": mongo_status()}
 
 
 @app.post("/api/logout")
