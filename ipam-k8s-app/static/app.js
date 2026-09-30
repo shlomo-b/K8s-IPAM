@@ -7,6 +7,7 @@ const state = {
   view: "dashboard",
   selectedPool: "",
   user: "",
+  mongoName: "mongodb",
 };
 
 const MAP_LIMIT = 512;
@@ -35,7 +36,8 @@ function renderMongoStatus(mongo) {
   const el = $("mongo-status");
   if (!el) return;
   const info = mongo || {};
-  const name = info.name || "mongodb-atlas";
+  const name = info.name === "mongodb-atlas" ? "mongodb-atlas" : "mongodb";
+  state.mongoName = name;
   const connected = Boolean(info.connected);
   el.textContent = `${name}: ${connected ? "Connected" : "Disconnected"}`;
   el.classList.toggle("down", !connected);
@@ -403,18 +405,20 @@ function showUser(name) {
   if (!state.user) {
     const el = $("mongo-status");
     if (el) {
-      el.textContent = "mongodb-atlas: Disconnected";
+      el.textContent = `${state.mongoName || "mongodb"}: Disconnected`;
       el.classList.add("down");
     }
   }
 }
 
-async function enterApp(user) {
+async function enterApp(user, mongo) {
   if (user) {
     showUser(user);
+    if (mongo) renderMongoStatus(mongo);
   } else {
     const me = await api("/api/me");
     showUser(me.user);
+    renderMongoStatus(me.mongodb);
   }
   $("login-screen").hidden = true;
   $("app-screen").hidden = false;
@@ -495,7 +499,7 @@ $("login-form").addEventListener("submit", async (e) => {
         password: $("password").value,
       }),
     });
-    await enterApp(data.user);
+    await enterApp(data.user, data.mongodb);
   } catch (err) {
     $("login-error").textContent = err.message;
     $("login-error").hidden = false;
@@ -626,7 +630,8 @@ $("pool-form").addEventListener("submit", async (e) => {
 
 api("/api/me")
   .then(async (me) => {
-    await enterApp(me.user);
+    renderMongoStatus(me.mongodb);
+    await enterApp(me.user, me.mongodb);
   })
   .catch(() => {
     $("login-screen").hidden = false;
