@@ -34,8 +34,9 @@ button { cursor: pointer; }
 code { font-family: var(--mono); }
 
 .login-screen {
-  min-height: 100%;
-  padding-bottom: 52px;
+  height: calc(100vh - 52px);
+  min-height: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: 1fr 320px;
   background:
@@ -47,6 +48,9 @@ code { font-family: var(--mono); }
   position: relative;
   display: grid;
   place-items: center;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
 .login-wheel {
@@ -72,26 +76,53 @@ code { font-family: var(--mono); }
 .login-card {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 36px 28px;
+  align-items: center;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+  padding: 56px 28px 36px;
   background: #070b14;
   border-left: 1px solid var(--line);
 }
 
-.login-wordmark {
-  width: 170px;
-  margin-bottom: 22px;
-}
-
-.login-card h1 {
-  margin: 0 0 24px;
-  font-size: 22px;
+.login-brand {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
   letter-spacing: -0.03em;
+  text-transform: none;
+  color: var(--k8s);
+  line-height: 1;
 }
 
-.login-card form {
-  display: grid;
+.login-form {
+  flex: 1 1 auto;
+  width: min(260px, 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 14px;
+  margin: 0;
+}
+
+.login-brand-footer {
+  flex: 0 0 auto;
+  margin: 0;
+  color: #4a5564;
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: none;
+  line-height: 1;
+}
+
+.login-card button[type="submit"] {
+  background: var(--k8s);
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-weight: 600;
 }
 
 label {
@@ -477,7 +508,7 @@ dialog h3 { margin: 0 0 4px; }
 }
 
 @media (max-width: 720px) {
-  .login-screen { grid-template-columns: 1fr; }
-  .login-art { min-height: 180px; }
-  .login-card { border-left: 0; border-top: 1px solid var(--line); }
+  .login-screen { grid-template-columns: 1fr; height: auto; min-height: calc(100vh - 52px); overflow: auto; }
+  .login-art { min-height: 180px; height: auto; }
+  .login-card { border-left: 0; border-top: 1px solid var(--line); height: auto; }
 }
