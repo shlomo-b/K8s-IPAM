@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=2.0.1" />
 </head>
 <body>
   <div id="login-screen" class="login-screen">
@@ -18,9 +18,8 @@
       <div class="login-ring delay"></div>
     </div>
     <div class="login-card">
-      <img class="login-wordmark" src="/static/img/kubernetes-horizontal-color.svg" alt="Kubernetes" />
-      <h1>IPAM for Kubernetes</h1>
-      <form id="login-form">
+      <strong class="login-brand">K8s IPAM</strong>
+      <form id="login-form" class="login-form">
         <label>
           Username
           <input id="username" name="username" autocomplete="username" required />
@@ -32,6 +31,7 @@
         <p id="login-error" class="error" hidden></p>
         <button type="submit">Sign in</button>
       </form>
+      <span class="login-brand-footer" aria-hidden="true">K8s IPAM</span>
     </div>
   </div>
 
@@ -229,6 +229,6 @@
 
   <footer class="app-footer">© 2026 K8s IPAM. All rights reserved by Shlomo Barzilai.</footer>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=2.0.1"></script>
 </body>
 </html>

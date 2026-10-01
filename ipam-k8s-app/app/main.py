@@ -498,7 +498,7 @@ def metrics() -> PlainTextResponse:
 
 
 @app.post("/api/login")
-def login(body: LoginBody, request: Request) -> dict[str, str]:
+def login(body: LoginBody, request: Request) -> dict[str, Any]:
     if body.username != IPAM_USER or body.password != IPAM_PASSWORD:
         raise HTTPException(status_code=401, detail="Invalid username or password")
     request.session["user"] = body.username
