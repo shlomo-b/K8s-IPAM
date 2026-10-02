@@ -11,7 +11,9 @@ from typing import Any
 from urllib.parse import quote_plus
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse
+
+from app import metrics as metrics_mod
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from pymongo import MongoClient
@@ -307,6 +309,16 @@ else:
     log.info("MongoDB disabled. Using file store %s", DATA_FILE)
 
 app = FastAPI(title="Kubernetes IPAM")
+
+
+def _metrics_up() -> bool:
+    if not USE_MONGODB:
+        return True
+    return bool(mongo_status().get("connected"))
+
+
+metrics_mod.bind_health(_metrics_up)
+app.include_router(metrics_mod.router)
 app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, same_site="lax")
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
@@ -315,9 +327,7 @@ def load_db() -> dict[str, Any]:
     if not USE_MONGODB:
         return load_file_db()
     with _db_lock:
-        cached = _db_cache["data"]
-        if cached is not None:
-            return cached
+        # Always read from Mongo so every Kubernetes pod sees the same data.
         started = time.monotonic()
         database = mongo_db()
         data = {
@@ -490,11 +500,6 @@ class AllocationBody(BaseModel):
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(STATIC / "index.html")
-
-
-@app.get("/metrics")
-def metrics() -> PlainTextResponse:
-    return PlainTextResponse("ipam_up 1\n", media_type="text/plain; version=0.0.4")
 
 
 @app.post("/api/login")

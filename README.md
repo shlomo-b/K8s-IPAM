@@ -6,6 +6,8 @@ Record which address belongs to a Pod, Service, Ingress, Node, Master, APIServer
 
 This application does **not** connect to the Kubernetes API. Allocations are entered and maintained by operators.
 
+![K8s IPAM dashboard](docs/dashboard.png)
+
 ---
 
 ## Features
